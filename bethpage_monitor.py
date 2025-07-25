@@ -15,6 +15,7 @@ EMAIL_PASSWORD = "gytckevcovrzimws"
 TO_EMAIL = "jamesutkovic@gmail.com"
 # ==================================================================
 
+# ✅ These are the schedule_ids found from your screenshots
 COURSE_OPTIONS = {
     "Bethpage Black Course": "2431",
     "Bethpage Red Course": "2432",
@@ -25,6 +26,7 @@ POLL_INTERVAL = 30  # seconds
 
 FACILITY_ID = "19765"  # course_id for Bethpage facility
 
+# ------------------------- EMAIL UTILS ---------------------------
 def send_email(subject, body):
     try:
         msg = MIMEText(body)
@@ -40,6 +42,8 @@ def send_email(subject, body):
         print(f"❌ Email send error: {e}")
 
 def send_email_alert(times, date, start_time_str, end_time_str, course_name, players):
+    if not times:
+        return
     times_lines = "\n".join(times)
     body = (
         f"Tee times found for {course_name} on {date} between {start_time_str}-{end_time_str} for {players} player(s):\n"
@@ -47,33 +51,42 @@ def send_email_alert(times, date, start_time_str, end_time_str, course_name, pla
     )
     send_email(f"🔥 Tee Times Found on {course_name}!", body)
 
+# ------------------------- TIME UTILS ----------------------------
 def within_window(t, start_time, end_time):
     return start_time <= t <= end_time
 
+# ------------------------- MAIN CHECK ----------------------------
 def check_day(date, holes, schedule_id, start_time, end_time, players):
+    # Try without schedule_id first to see if times show
     url = "https://foreupsoftware.com/index.php/api/booking/times"
-    # include both facility id and schedule id
     params = {
         "time": "00:00",
         "date": date,
         "holes": holes,
         "course_id": FACILITY_ID,
-        "schedule_id": schedule_id,
         "api_key": "no_limits"
     }
+    # Add schedule_id as well based on screenshots
+    params["schedule_id"] = schedule_id
     r = requests.get(url, params=params)
     r.raise_for_status()
     data = r.json()
     print("DEBUG API DATA:", data)
     available = []
     for slot in data:
+        # debugging: print each slot
+        print("DEBUG SLOT:", slot)
         if slot.get("is_bookable") and slot.get("available_spots", 4) >= players:
-            t = datetime.datetime.strptime(slot["time"], "%H:%M:%S").time()
+            try:
+                t = datetime.datetime.strptime(slot["time"], "%H:%M:%S").time()
+            except:
+                continue
             if within_window(t, start_time, end_time):
                 formatted_time = datetime.datetime.strptime(slot["time"][:5], "%H:%M").strftime("%I:%M %p")
                 available.append(formatted_time)
     return available
 
+# ----------------------- MONITORING LOOP --------------------------
 def monitor_task(task_id, date, holes, schedule_id, course_name, start_time, end_time, start_time_str, end_time_str, players):
     st.session_state['monitors'][task_id]['status'] = "Started"
     while st.session_state['monitors'][task_id]['active']:
@@ -88,6 +101,7 @@ def monitor_task(task_id, date, holes, schedule_id, course_name, start_time, end
             st.session_state['monitors'][task_id]['status'] = f"Error: {e}"
         time.sleep(POLL_INTERVAL)
 
+# ------------------------- STREAMLIT UI --------------------------
 if 'monitors' not in st.session_state:
     st.session_state['monitors'] = {}
 
@@ -127,7 +141,11 @@ if st.button("Add Monitor"):
         'active': True,
         'status': 'Starting...'
     }
-    threading.Thread(target=monitor_task, args=(task_id, api_date, holes_input, schedule_id, course_input, start_time, end_time, start_time_str, end_time_str, players_input), daemon=True).start()
+    threading.Thread(
+        target=monitor_task,
+        args=(task_id, api_date, holes_input, schedule_id, course_input, start_time, end_time, start_time_str, end_time_str, players_input),
+        daemon=True
+    ).start()
     st.success(f"Monitoring started for {course_input} on {display_date} {start_time_str}-{end_time_str} for {players_input} player(s)")
     send_email("✅ Monitoring Started", f"Monitoring started for {course_input} on {display_date} between {start_time_str} and {end_time_str} for {players_input} player(s).")
 
