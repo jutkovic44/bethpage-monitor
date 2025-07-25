@@ -18,13 +18,9 @@ COURSE_OPTIONS = {
     "Bethpage (All Courses)": "19765",
 }
 
-# Default values (will be overridden by UI selections)
 POLL_INTERVAL = 30  # seconds
 
-# Email alert function
-def send_email_alert(times):
-    subject = "🔥 Tee Times Found!"
-    body = f"Tee times found: {', '.join(times)}\n\nGo to Bethpage ForeUp booking page now!"
+def send_email(subject, body):
     msg = MIMEText(body)
     msg["Subject"] = subject
     msg["From"] = EMAIL_ADDRESS
@@ -34,9 +30,14 @@ def send_email_alert(times):
             server.starttls()
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             server.send_message(msg)
-        print("✅ Email alert sent!")
+        print(f"✅ Email sent: {subject}")
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
+
+def send_email_alert(times):
+    subject = "🔥 Tee Times Found!"
+    body = f"Tee times found: {', '.join(times)}\n\nGo to Bethpage ForeUp booking page now!"
+    send_email(subject, body)
 
 def within_window(t, start_time, end_time):
     return start_time <= t <= end_time
@@ -80,8 +81,8 @@ course_input = st.selectbox("Course", list(COURSE_OPTIONS.keys()))
 
 # Timeframe selection
 hours = [f"{h:02d}:00" for h in range(0, 24)]
-start_time_str = st.selectbox("Start Time", hours, index=5)  # default 05:00
-end_time_str = st.selectbox("End Time", hours, index=7)      # default 07:00
+start_time_str = st.selectbox("Start Time", hours, index=5)
+end_time_str = st.selectbox("End Time", hours, index=7)
 start_time = datetime.datetime.strptime(start_time_str, "%H:%M").time()
 end_time = datetime.datetime.strptime(end_time_str, "%H:%M").time()
 
@@ -92,14 +93,15 @@ if 'last_result' not in st.session_state:
 
 if st.button("Start Monitoring"):
     st.session_state['monitoring'] = True
-    # Format date as YYYY-MM-DD for API
     api_date = date_input.strftime("%Y-%m-%d")
     threading.Thread(target=monitor, args=(api_date, holes_input, COURSE_OPTIONS[course_input], start_time, end_time), daemon=True).start()
     st.success("Monitoring started!")
+    send_email("✅ Monitoring Started", f"Monitoring has started for {date_input.strftime('%m/%d/%Y')} between {start_time_str} and {end_time_str}.")
 
 if st.button("Stop Monitoring"):
-    st.session_state['monitoring'] = False
-    st.warning("Monitoring stopped.")
+    if st.session_state['monitoring']:
+        st.session_state['monitoring'] = False
+        st.warning("Monitoring stopped.")
+        send_email("🛑 Monitoring Stopped", f"Monitoring has stopped for {date_input.strftime('%m/%d/%Y')} between {start_time_str} and {end_time_str}.")
 
 st.write(st.session_state['last_result'])
-
