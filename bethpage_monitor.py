@@ -15,7 +15,6 @@ EMAIL_PASSWORD = "gytckevcovrzimws"
 TO_EMAIL = "jamesutkovic@gmail.com"
 # ==================================================================
 
-# ✅ Use schedule_id values from network data
 COURSE_OPTIONS = {
     "Bethpage Black Course": "2431",
     "Bethpage Red Course": "2432",
@@ -70,7 +69,6 @@ def check_day(date, holes, schedule_id, start_time, end_time, players):
         if slot.get("is_bookable") and slot.get("available_spots", 4) >= players:
             t = datetime.datetime.strptime(slot["time"], "%H:%M:%S").time()
             if within_window(t, start_time, end_time):
-                # convert time to standard for display later
                 available.append(datetime.datetime.strptime(slot["time"][:5], "%H:%M").strftime("%I:%M %p"))
     return available
 
@@ -93,7 +91,8 @@ if 'monitors' not in st.session_state:
 
 st.title("Bethpage Tee Time Monitor")
 
-date_input = st.date_input("Select Date (DD/MM/YYYY)", datetime.date.today() + datetime.timedelta(days=7), format="DD/MM/YYYY")
+# ✅ Update label and format for month/day/year
+date_input = st.date_input("Select Date (MM/DD/YYYY)", datetime.date.today() + datetime.timedelta(days=7), format="MM/DD/YYYY")
 holes_input = st.selectbox("Number of Holes", [9, 18])
 players_input = st.selectbox("Number of Players", [1, 2, 3, 4])
 course_input = st.selectbox("Course", list(COURSE_OPTIONS.keys()))
@@ -107,15 +106,15 @@ for h in range(1, 13):
     for m in [0, 30]:
         hours_12.append(f"{h:02d}:{m:02d} PM")
 
-start_time_str = st.selectbox("Start Time", hours_12, index=10)  # default ~5:00 AM
-end_time_str = st.selectbox("End Time", hours_12, index=14)    # default ~7:00 AM
+start_time_str = st.selectbox("Start Time", hours_12, index=10)
+end_time_str = st.selectbox("End Time", hours_12, index=14)
 start_time = datetime.datetime.strptime(start_time_str, "%I:%M %p").time()
 end_time = datetime.datetime.strptime(end_time_str, "%I:%M %p").time()
 
 if st.button("Add Monitor"):
     task_id = str(uuid.uuid4())
     api_date = date_input.strftime("%Y-%m-%d")
-    display_date = date_input.strftime("%d/%m/%Y")
+    display_date = date_input.strftime("%m/%d/%Y")
     schedule_id = COURSE_OPTIONS[course_input]
     st.session_state['monitors'][task_id] = {
         'date': display_date,
