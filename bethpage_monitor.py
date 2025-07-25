@@ -35,9 +35,13 @@ def send_email(subject, body):
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
 
-def send_email_alert(times):
+def send_email_alert(times, date, start_time_str, end_time_str):
     subject = "🔥 Tee Times Found!"
-    body = f"Tee times found: {', '.join(times)}\n\nGo to Bethpage ForeUp booking page now!"
+    times_str = ', '.join(times)
+    body = (
+        f"Tee times found for {date} between {start_time_str}-{end_time_str}:\n"
+        f"{times_str}\n\nGo to Bethpage ForeUp booking page now!"
+    )
     send_email(subject, body)
 
 def within_window(t, start_time, end_time):
@@ -63,12 +67,14 @@ def check_day(date, holes, course_id, start_time, end_time):
                 available.append(slot['time'])
     return available
 
-def monitor_task(task_id, date, holes, course_id, start_time, end_time):
+def monitor_task(task_id, date, holes, course_id, start_time, end_time, start_time_str, end_time_str):
+    # Once monitoring actually starts searching, change status to "Started"
+    st.session_state['monitors'][task_id]['status'] = "Started"
     while st.session_state['monitors'][task_id]['active']:
         times = check_day(date, holes, course_id, start_time, end_time)
         if times:
             st.session_state['monitors'][task_id]['status'] = f"🔥 Times found! {times}"
-            send_email_alert(times)
+            send_email_alert(times, date, start_time_str, end_time_str)
         else:
             st.session_state['monitors'][task_id]['status'] = "No times yet..."
         time.sleep(POLL_INTERVAL)
@@ -103,7 +109,7 @@ if st.button("Add Monitor"):
         'active': True,
         'status': 'Starting...'
     }
-    threading.Thread(target=monitor_task, args=(task_id, api_date, holes_input, COURSE_OPTIONS[course_input], start_time, end_time), daemon=True).start()
+    threading.Thread(target=monitor_task, args=(task_id, api_date, holes_input, COURSE_OPTIONS[course_input], start_time, end_time, start_time_str, end_time_str), daemon=True).start()
     st.success(f"Monitoring started for {date_input.strftime('%m/%d/%Y')} {start_time_str}-{end_time_str}")
     send_email("✅ Monitoring Started", f"Monitoring started for {date_input.strftime('%m/%d/%Y')} between {start_time_str} and {end_time_str}.")
 
