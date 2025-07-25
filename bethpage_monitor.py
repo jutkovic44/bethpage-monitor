@@ -15,7 +15,7 @@ EMAIL_PASSWORD = "gytckevcovrzimws"
 TO_EMAIL = "jamesutkovic@gmail.com"
 # ==================================================================
 
-# ✅ These are the schedule_ids found from your screenshots
+# ✅ These are the resource_ids found from your screenshots
 COURSE_OPTIONS = {
     "Bethpage Black Course": "2431",
     "Bethpage Red Course": "2432",
@@ -51,30 +51,26 @@ def send_email_alert(times, date, start_time_str, end_time_str, course_name, pla
     )
     send_email(f"🔥 Tee Times Found on {course_name}!", body)
 
-# ------------------------- TIME UTILS ----------------------------
 def within_window(t, start_time, end_time):
     return start_time <= t <= end_time
 
-# ------------------------- MAIN CHECK ----------------------------
-def check_day(date, holes, schedule_id, start_time, end_time, players):
-    # Try without schedule_id first to see if times show
+def check_day(date, holes, resource_id, start_time, end_time, players):
     url = "https://foreupsoftware.com/index.php/api/booking/times"
+    # ✅ Use resource_id instead of schedule_id based on screenshots
     params = {
         "time": "00:00",
         "date": date,
         "holes": holes,
         "course_id": FACILITY_ID,
+        "resource_id": resource_id,
         "api_key": "no_limits"
     }
-    # Add schedule_id as well based on screenshots
-    params["schedule_id"] = schedule_id
     r = requests.get(url, params=params)
     r.raise_for_status()
     data = r.json()
     print("DEBUG API DATA:", data)
     available = []
     for slot in data:
-        # debugging: print each slot
         print("DEBUG SLOT:", slot)
         if slot.get("is_bookable") and slot.get("available_spots", 4) >= players:
             try:
@@ -86,12 +82,11 @@ def check_day(date, holes, schedule_id, start_time, end_time, players):
                 available.append(formatted_time)
     return available
 
-# ----------------------- MONITORING LOOP --------------------------
-def monitor_task(task_id, date, holes, schedule_id, course_name, start_time, end_time, start_time_str, end_time_str, players):
+def monitor_task(task_id, date, holes, resource_id, course_name, start_time, end_time, start_time_str, end_time_str, players):
     st.session_state['monitors'][task_id]['status'] = "Started"
     while st.session_state['monitors'][task_id]['active']:
         try:
-            times = check_day(date, holes, schedule_id, start_time, end_time, players)
+            times = check_day(date, holes, resource_id, start_time, end_time, players)
             if times:
                 st.session_state['monitors'][task_id]['status'] = f"🔥 Times found! {times}"
                 send_email_alert(times, date, start_time_str, end_time_str, course_name, players)
@@ -130,12 +125,12 @@ if st.button("Add Monitor"):
     task_id = str(uuid.uuid4())
     api_date = date_input.strftime("%Y-%m-%d")
     display_date = date_input.strftime("%m/%d/%Y")
-    schedule_id = COURSE_OPTIONS[course_input]
+    resource_id = COURSE_OPTIONS[course_input]
     st.session_state['monitors'][task_id] = {
         'date': display_date,
         'holes': holes_input,
         'players': players_input,
-        'course_id': schedule_id,
+        'course_id': resource_id,
         'start': start_time_str,
         'end': end_time_str,
         'active': True,
@@ -143,7 +138,7 @@ if st.button("Add Monitor"):
     }
     threading.Thread(
         target=monitor_task,
-        args=(task_id, api_date, holes_input, schedule_id, course_input, start_time, end_time, start_time_str, end_time_str, players_input),
+        args=(task_id, api_date, holes_input, resource_id, course_input, start_time, end_time, start_time_str, end_time_str, players_input),
         daemon=True
     ).start()
     st.success(f"Monitoring started for {course_input} on {display_date} {start_time_str}-{end_time_str} for {players_input} player(s)")
