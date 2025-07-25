@@ -23,6 +23,8 @@ COURSE_OPTIONS = {
 
 POLL_INTERVAL = 30  # seconds
 
+FACILITY_ID = "19765"  # course_id for Bethpage facility
+
 def send_email(subject, body):
     try:
         msg = MIMEText(body)
@@ -38,7 +40,6 @@ def send_email(subject, body):
         print(f"❌ Email send error: {e}")
 
 def send_email_alert(times, date, start_time_str, end_time_str, course_name, players):
-    # Ensure each time is on a new line
     times_lines = "\n".join(times)
     body = (
         f"Tee times found for {course_name} on {date} between {start_time_str}-{end_time_str} for {players} player(s):\n"
@@ -51,10 +52,12 @@ def within_window(t, start_time, end_time):
 
 def check_day(date, holes, schedule_id, start_time, end_time, players):
     url = "https://foreupsoftware.com/index.php/api/booking/times"
+    # include both facility id and schedule id
     params = {
         "time": "00:00",
         "date": date,
         "holes": holes,
+        "course_id": FACILITY_ID,
         "schedule_id": schedule_id,
         "api_key": "no_limits"
     }
