@@ -15,7 +15,6 @@ EMAIL_PASSWORD = "gytckevcovrzimws"
 TO_EMAIL = "jamesutkovic@gmail.com"
 # ==================================================================
 
-# ✅ Use schedule_id values identified from screenshots
 COURSE_OPTIONS = {
     "Bethpage Black Course": "2431",
     "Bethpage Red Course": "2432",
@@ -38,13 +37,12 @@ def send_email(subject, body):
     except Exception as e:
         print(f"❌ Email send error: {e}")
 
-def format_time_to_standard(time_str):
-    return datetime.datetime.strptime(time_str, "%I:%M %p").strftime("%I:%M %p")
-
 def send_email_alert(times, date, start_time_str, end_time_str, course_name, players):
+    # Ensure each time is on a new line
+    times_lines = "\n".join(times)
     body = (
         f"Tee times found for {course_name} on {date} between {start_time_str}-{end_time_str} for {players} player(s):\n"
-        f"{', '.join(times)}\n\nBook ASAP!"
+        f"{times_lines}\n\nBook ASAP!"
     )
     send_email(f"🔥 Tee Times Found on {course_name}!", body)
 
@@ -52,7 +50,6 @@ def within_window(t, start_time, end_time):
     return start_time <= t <= end_time
 
 def check_day(date, holes, schedule_id, start_time, end_time, players):
-    # ✅ Use schedule_id parameter instead of course_id
     url = "https://foreupsoftware.com/index.php/api/booking/times"
     params = {
         "time": "00:00",
@@ -64,13 +61,14 @@ def check_day(date, holes, schedule_id, start_time, end_time, players):
     r = requests.get(url, params=params)
     r.raise_for_status()
     data = r.json()
-    print("DEBUG API DATA:", data)  # helpful debug
+    print("DEBUG API DATA:", data)
     available = []
     for slot in data:
         if slot.get("is_bookable") and slot.get("available_spots", 4) >= players:
             t = datetime.datetime.strptime(slot["time"], "%H:%M:%S").time()
             if within_window(t, start_time, end_time):
-                available.append(datetime.datetime.strptime(slot["time"][:5], "%H:%M").strftime("%I:%M %p"))
+                formatted_time = datetime.datetime.strptime(slot["time"][:5], "%H:%M").strftime("%I:%M %p")
+                available.append(formatted_time)
     return available
 
 def monitor_task(task_id, date, holes, schedule_id, course_name, start_time, end_time, start_time_str, end_time_str, players):
@@ -92,13 +90,12 @@ if 'monitors' not in st.session_state:
 
 st.title("Bethpage Tee Time Monitor")
 
-# ✅ Update label and format to Month/Day/Year
 date_input = st.date_input("Select Date (MM/DD/YYYY)", datetime.date.today() + datetime.timedelta(days=7), format="MM/DD/YYYY")
 holes_input = st.selectbox("Number of Holes", [9, 18])
 players_input = st.selectbox("Number of Players", [1, 2, 3, 4])
 course_input = st.selectbox("Course", list(COURSE_OPTIONS.keys()))
 
-# ✅ Time dropdown with AM/PM
+# Time dropdown with AM/PM
 hours_12 = []
 for h in range(1, 13):
     for m in [0, 30]:
