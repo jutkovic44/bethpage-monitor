@@ -39,15 +39,13 @@ def send_email(subject, body):
         print(f"❌ Email send error: {e}")
 
 def format_time_to_standard(time_str):
-    t = datetime.datetime.strptime(time_str, "%H:%M")
+    t = datetime.datetime.strptime(time_str, "%I:%M %p")
     return t.strftime("%I:%M %p")
 
 def send_email_alert(times, date, start_time_str, end_time_str, course_name, players):
     times_standard = [format_time_to_standard(t) for t in times]
-    start_std = format_time_to_standard(start_time_str)
-    end_std = format_time_to_standard(end_time_str)
     body = (
-        f"Tee times found for {course_name} on {date} between {start_std}-{end_std} for {players} player(s):\n"
+        f"Tee times found for {course_name} on {date} between {start_time_str}-{end_time_str} for {players} player(s):\n"
         f"{', '.join(times_standard)}\n\nBook ASAP!"
     )
     send_email(f"🔥 Tee Times Found on {course_name}!", body)
@@ -57,7 +55,6 @@ def within_window(t, start_time, end_time):
 
 def check_day(date, holes, schedule_id, start_time, end_time, players):
     url = "https://foreupsoftware.com/index.php/api/booking/times"
-    # ✅ Use schedule_id instead of course_id
     params = {
         "time": "00:00",
         "date": date,
@@ -73,7 +70,8 @@ def check_day(date, holes, schedule_id, start_time, end_time, players):
         if slot.get("is_bookable") and slot.get("available_spots", 4) >= players:
             t = datetime.datetime.strptime(slot["time"], "%H:%M:%S").time()
             if within_window(t, start_time, end_time):
-                available.append(slot["time"][:5])
+                # convert time to standard for display later
+                available.append(datetime.datetime.strptime(slot["time"][:5], "%H:%M").strftime("%I:%M %p"))
     return available
 
 def monitor_task(task_id, date, holes, schedule_id, course_name, start_time, end_time, start_time_str, end_time_str, players):
@@ -82,7 +80,7 @@ def monitor_task(task_id, date, holes, schedule_id, course_name, start_time, end
         try:
             times = check_day(date, holes, schedule_id, start_time, end_time, players)
             if times:
-                st.session_state['monitors'][task_id]['status'] = f"🔥 Times found! {[format_time_to_standard(t) for t in times]}"
+                st.session_state['monitors'][task_id]['status'] = f"🔥 Times found! {times}"
                 send_email_alert(times, date, start_time_str, end_time_str, course_name, players)
             else:
                 st.session_state['monitors'][task_id]['status'] = "No times yet..."
@@ -95,16 +93,24 @@ if 'monitors' not in st.session_state:
 
 st.title("Bethpage Tee Time Monitor")
 
-date_input = st.date_input("Select Date (DD/MM/YYYY)", datetime.date.today() + datetime.timedelta(days=7))
+date_input = st.date_input("Select Date (DD/MM/YYYY)", datetime.date.today() + datetime.timedelta(days=7), format="DD/MM/YYYY")
 holes_input = st.selectbox("Number of Holes", [9, 18])
 players_input = st.selectbox("Number of Players", [1, 2, 3, 4])
 course_input = st.selectbox("Course", list(COURSE_OPTIONS.keys()))
 
-hours = [f"{h:02d}:00" for h in range(0, 24)]
-start_time_str = st.selectbox("Start Time", hours, index=5)
-end_time_str = st.selectbox("End Time", hours, index=7)
-start_time = datetime.datetime.strptime(start_time_str, "%H:%M").time()
-end_time = datetime.datetime.strptime(end_time_str, "%H:%M").time()
+# Generate 12-hour format times with AM/PM
+hours_12 = []
+for h in range(1, 13):
+    for m in [0, 30]:
+        hours_12.append(f"{h:02d}:{m:02d} AM")
+for h in range(1, 13):
+    for m in [0, 30]:
+        hours_12.append(f"{h:02d}:{m:02d} PM")
+
+start_time_str = st.selectbox("Start Time", hours_12, index=10)  # default ~5:00 AM
+end_time_str = st.selectbox("End Time", hours_12, index=14)    # default ~7:00 AM
+start_time = datetime.datetime.strptime(start_time_str, "%I:%M %p").time()
+end_time = datetime.datetime.strptime(end_time_str, "%I:%M %p").time()
 
 if st.button("Add Monitor"):
     task_id = str(uuid.uuid4())
@@ -116,14 +122,14 @@ if st.button("Add Monitor"):
         'holes': holes_input,
         'players': players_input,
         'course_id': schedule_id,
-        'start': format_time_to_standard(start_time_str),
-        'end': format_time_to_standard(end_time_str),
+        'start': start_time_str,
+        'end': end_time_str,
         'active': True,
         'status': 'Starting...'
     }
     threading.Thread(target=monitor_task, args=(task_id, api_date, holes_input, schedule_id, course_input, start_time, end_time, start_time_str, end_time_str, players_input), daemon=True).start()
-    st.success(f"Monitoring started for {course_input} on {display_date} {format_time_to_standard(start_time_str)}-{format_time_to_standard(end_time_str)} for {players_input} player(s)")
-    send_email("✅ Monitoring Started", f"Monitoring started for {course_input} on {display_date} between {format_time_to_standard(start_time_str)} and {format_time_to_standard(end_time_str)} for {players_input} player(s).")
+    st.success(f"Monitoring started for {course_input} on {display_date} {start_time_str}-{end_time_str} for {players_input} player(s)")
+    send_email("✅ Monitoring Started", f"Monitoring started for {course_input} on {display_date} between {start_time_str} and {end_time_str} for {players_input} player(s).")
 
 st.subheader("Active Monitors")
 to_delete = []
