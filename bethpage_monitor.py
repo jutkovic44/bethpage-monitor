@@ -5,13 +5,14 @@ import time
 import threading
 import smtplib
 from email.mime.text import MIMEText
+import uuid
 
 # ========================= EMAIL SETTINGS =========================
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-EMAIL_ADDRESS = "jamesutkovic@gmail.com"  # your Gmail address
-EMAIL_PASSWORD = "gytckevcovrzimws"   # your Gmail App Password (not your main password)
-TO_EMAIL = "jamesutkovic@gmail.com"       # where to send the alerts
+EMAIL_ADDRESS = "jamesutkovic@gmail.com"
+EMAIL_PASSWORD = "gytckevcovrzimws"
+TO_EMAIL = "jamesutkovic@gmail.com"
 # ==================================================================
 
 COURSE_OPTIONS = {
@@ -62,15 +63,19 @@ def check_day(date, holes, course_id, start_time, end_time):
                 available.append(slot['time'])
     return available
 
-def monitor(date, holes, course_id, start_time, end_time):
-    while st.session_state['monitoring']:
+def monitor_task(task_id, date, holes, course_id, start_time, end_time):
+    while st.session_state['monitors'][task_id]['active']:
         times = check_day(date, holes, course_id, start_time, end_time)
         if times:
-            st.session_state['last_result'] = f"🔥 Tee times found! {times}"
+            st.session_state['monitors'][task_id]['status'] = f"🔥 Times found! {times}"
             send_email_alert(times)
         else:
-            st.session_state['last_result'] = "No times yet..."
+            st.session_state['monitors'][task_id]['status'] = "No times yet..."
         time.sleep(POLL_INTERVAL)
+
+# Initialize monitors dict
+if 'monitors' not in st.session_state:
+    st.session_state['monitors'] = {}
 
 st.title("Bethpage Tee Time Monitor")
 
@@ -79,29 +84,47 @@ date_input = st.date_input("Select Date (MM/DD/YYYY)", datetime.date.today() + d
 holes_input = st.selectbox("Number of Holes", [9, 18])
 course_input = st.selectbox("Course", list(COURSE_OPTIONS.keys()))
 
-# Timeframe selection
 hours = [f"{h:02d}:00" for h in range(0, 24)]
 start_time_str = st.selectbox("Start Time", hours, index=5)
 end_time_str = st.selectbox("End Time", hours, index=7)
 start_time = datetime.datetime.strptime(start_time_str, "%H:%M").time()
 end_time = datetime.datetime.strptime(end_time_str, "%H:%M").time()
 
-if 'monitoring' not in st.session_state:
-    st.session_state['monitoring'] = False
-if 'last_result' not in st.session_state:
-    st.session_state['last_result'] = ""
-
-if st.button("Start Monitoring"):
-    st.session_state['monitoring'] = True
+# Start a new monitor
+if st.button("Add Monitor"):
+    task_id = str(uuid.uuid4())
     api_date = date_input.strftime("%Y-%m-%d")
-    threading.Thread(target=monitor, args=(api_date, holes_input, COURSE_OPTIONS[course_input], start_time, end_time), daemon=True).start()
-    st.success("Monitoring started!")
-    send_email("✅ Monitoring Started", f"Monitoring has started for {date_input.strftime('%m/%d/%Y')} between {start_time_str} and {end_time_str}.")
+    st.session_state['monitors'][task_id] = {
+        'date': api_date,
+        'holes': holes_input,
+        'course_id': COURSE_OPTIONS[course_input],
+        'start': start_time_str,
+        'end': end_time_str,
+        'active': True,
+        'status': 'Starting...'
+    }
+    threading.Thread(target=monitor_task, args=(task_id, api_date, holes_input, COURSE_OPTIONS[course_input], start_time, end_time), daemon=True).start()
+    st.success(f"Monitoring started for {date_input.strftime('%m/%d/%Y')} {start_time_str}-{end_time_str}")
+    send_email("✅ Monitoring Started", f"Monitoring started for {date_input.strftime('%m/%d/%Y')} between {start_time_str} and {end_time_str}.")
 
-if st.button("Stop Monitoring"):
-    if st.session_state['monitoring']:
-        st.session_state['monitoring'] = False
-        st.warning("Monitoring stopped.")
-        send_email("🛑 Monitoring Stopped", f"Monitoring has stopped for {date_input.strftime('%m/%d/%Y')} between {start_time_str} and {end_time_str}.")
+# Display active monitors
+st.subheader("Active Monitors")
+to_delete = []
+for task_id, task in st.session_state['monitors'].items():
+    col1, col2, col3, col4 = st.columns([3,3,3,1])
+    with col1:
+        st.write(f"Date: {task['date']}")
+    with col2:
+        st.write(f"Time: {task['start']} - {task['end']}")
+    with col3:
+        st.write(task['status'])
+    with col4:
+        if task['active']:
+            if st.button("Cancel", key=task_id):
+                st.session_state['monitors'][task_id]['active'] = False
+                send_email("🛑 Monitoring Stopped", f"Monitoring stopped for {task['date']} between {task['start']} and {task['end']}.")
+                to_delete.append(task_id)
 
-st.write(st.session_state['last_result'])
+# Remove stopped monitors from view
+for task_id in to_delete:
+    del st.session_state['monitors'][task_id]
