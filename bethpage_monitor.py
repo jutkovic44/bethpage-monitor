@@ -15,6 +15,7 @@ EMAIL_PASSWORD = "gytckevcovrzimws"
 TO_EMAIL = "jamesutkovic@gmail.com"
 # ==================================================================
 
+# ✅ Use schedule_id values from network data
 COURSE_OPTIONS = {
     "Bethpage Black Course": "2431",
     "Bethpage Red Course": "2432",
@@ -24,18 +25,18 @@ COURSE_OPTIONS = {
 POLL_INTERVAL = 30  # seconds
 
 def send_email(subject, body):
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_ADDRESS
-    msg["To"] = TO_EMAIL
     try:
+        msg = MIMEText(body)
+        msg["Subject"] = subject
+        msg["From"] = EMAIL_ADDRESS
+        msg["To"] = TO_EMAIL
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             server.send_message(msg)
         print(f"✅ Email sent: {subject}")
     except Exception as e:
-        print(f"❌ Failed to send email: {e}")
+        print(f"❌ Email send error: {e}")
 
 def format_time_to_standard(time_str):
     t = datetime.datetime.strptime(time_str, "%H:%M")
@@ -45,25 +46,23 @@ def send_email_alert(times, date, start_time_str, end_time_str, course_name, pla
     times_standard = [format_time_to_standard(t) for t in times]
     start_std = format_time_to_standard(start_time_str)
     end_std = format_time_to_standard(end_time_str)
-    subject = f"🔥 Tee Times Found on {course_name}!"
-    times_str = ', '.join(times_standard)
     body = (
         f"Tee times found for {course_name} on {date} between {start_std}-{end_std} for {players} player(s):\n"
-        f"{times_str}\n\nGo to Bethpage ForeUp booking page now!"
+        f"{', '.join(times_standard)}\n\nBook ASAP!"
     )
-    send_email(subject, body)
+    send_email(f"🔥 Tee Times Found on {course_name}!", body)
 
 def within_window(t, start_time, end_time):
     return start_time <= t <= end_time
 
-def check_day(date, holes, course_id, start_time, end_time, players):
+def check_day(date, holes, schedule_id, start_time, end_time, players):
     url = "https://foreupsoftware.com/index.php/api/booking/times"
+    # ✅ Use schedule_id instead of course_id
     params = {
         "time": "00:00",
         "date": date,
         "holes": holes,
-        "course_id": course_id,
-        "players": players,
+        "schedule_id": schedule_id,
         "api_key": "no_limits"
     }
     r = requests.get(url, params=params)
@@ -71,23 +70,24 @@ def check_day(date, holes, course_id, start_time, end_time, players):
     data = r.json()
     available = []
     for slot in data:
-        if slot.get('is_bookable') and slot.get('available_spots', 4) >= players:
-            t = datetime.datetime.strptime(slot['time'], "%H:%M:%S").time()
+        if slot.get("is_bookable") and slot.get("available_spots", 4) >= players:
+            t = datetime.datetime.strptime(slot["time"], "%H:%M:%S").time()
             if within_window(t, start_time, end_time):
-                # convert to standard format later
-                available.append(slot['time'][:5])
+                available.append(slot["time"][:5])
     return available
 
-def monitor_task(task_id, date, holes, course_id, course_name, start_time, end_time, start_time_str, end_time_str, players):
+def monitor_task(task_id, date, holes, schedule_id, course_name, start_time, end_time, start_time_str, end_time_str, players):
     st.session_state['monitors'][task_id]['status'] = "Started"
     while st.session_state['monitors'][task_id]['active']:
-        times = check_day(date, holes, course_id, start_time, end_time, players)
-        if times:
-            std_times = [format_time_to_standard(t) for t in times]
-            st.session_state['monitors'][task_id]['status'] = f"🔥 Times found! {std_times}"
-            send_email_alert(times, date, start_time_str, end_time_str, course_name, players)
-        else:
-            st.session_state['monitors'][task_id]['status'] = "No times yet..."
+        try:
+            times = check_day(date, holes, schedule_id, start_time, end_time, players)
+            if times:
+                st.session_state['monitors'][task_id]['status'] = f"🔥 Times found! {[format_time_to_standard(t) for t in times]}"
+                send_email_alert(times, date, start_time_str, end_time_str, course_name, players)
+            else:
+                st.session_state['monitors'][task_id]['status'] = "No times yet..."
+        except Exception as e:
+            st.session_state['monitors'][task_id]['status'] = f"Error: {e}"
         time.sleep(POLL_INTERVAL)
 
 if 'monitors' not in st.session_state:
@@ -95,7 +95,6 @@ if 'monitors' not in st.session_state:
 
 st.title("Bethpage Tee Time Monitor")
 
-# Show date as DD/MM/YYYY for UI
 date_input = st.date_input("Select Date (DD/MM/YYYY)", datetime.date.today() + datetime.timedelta(days=7))
 holes_input = st.selectbox("Number of Holes", [9, 18])
 players_input = st.selectbox("Number of Players", [1, 2, 3, 4])
@@ -109,21 +108,20 @@ end_time = datetime.datetime.strptime(end_time_str, "%H:%M").time()
 
 if st.button("Add Monitor"):
     task_id = str(uuid.uuid4())
-    # Use DD/MM/YYYY for display, but API still needs YYYY-MM-DD
     api_date = date_input.strftime("%Y-%m-%d")
     display_date = date_input.strftime("%d/%m/%Y")
-    course_id = COURSE_OPTIONS[course_input]
+    schedule_id = COURSE_OPTIONS[course_input]
     st.session_state['monitors'][task_id] = {
         'date': display_date,
         'holes': holes_input,
         'players': players_input,
-        'course_id': course_id,
+        'course_id': schedule_id,
         'start': format_time_to_standard(start_time_str),
         'end': format_time_to_standard(end_time_str),
         'active': True,
         'status': 'Starting...'
     }
-    threading.Thread(target=monitor_task, args=(task_id, api_date, holes_input, course_id, course_input, start_time, end_time, start_time_str, end_time_str, players_input), daemon=True).start()
+    threading.Thread(target=monitor_task, args=(task_id, api_date, holes_input, schedule_id, course_input, start_time, end_time, start_time_str, end_time_str, players_input), daemon=True).start()
     st.success(f"Monitoring started for {course_input} on {display_date} {format_time_to_standard(start_time_str)}-{format_time_to_standard(end_time_str)} for {players_input} player(s)")
     send_email("✅ Monitoring Started", f"Monitoring started for {course_input} on {display_date} between {format_time_to_standard(start_time_str)} and {format_time_to_standard(end_time_str)} for {players_input} player(s).")
 
