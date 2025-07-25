@@ -16,7 +16,7 @@ TO_EMAIL = "jamesutkovic@gmail.com"
 # ==================================================================
 
 COURSE_OPTIONS = {
-    "Bethpage (All Courses)": "19765",
+    "Bethpage Black Course": "2431",  # updated with provided resource id
 }
 
 POLL_INTERVAL = 30  # seconds
@@ -68,7 +68,6 @@ def check_day(date, holes, course_id, start_time, end_time):
     return available
 
 def monitor_task(task_id, date, holes, course_id, start_time, end_time, start_time_str, end_time_str):
-    # Once monitoring actually starts searching, change status to "Started"
     st.session_state['monitors'][task_id]['status'] = "Started"
     while st.session_state['monitors'][task_id]['active']:
         times = check_day(date, holes, course_id, start_time, end_time)
@@ -79,13 +78,11 @@ def monitor_task(task_id, date, holes, course_id, start_time, end_time, start_ti
             st.session_state['monitors'][task_id]['status'] = "No times yet..."
         time.sleep(POLL_INTERVAL)
 
-# Initialize monitors dict
 if 'monitors' not in st.session_state:
     st.session_state['monitors'] = {}
 
 st.title("Bethpage Tee Time Monitor")
 
-# UI Inputs
 date_input = st.date_input("Select Date (MM/DD/YYYY)", datetime.date.today() + datetime.timedelta(days=7))
 holes_input = st.selectbox("Number of Holes", [9, 18])
 course_input = st.selectbox("Course", list(COURSE_OPTIONS.keys()))
@@ -96,7 +93,6 @@ end_time_str = st.selectbox("End Time", hours, index=7)
 start_time = datetime.datetime.strptime(start_time_str, "%H:%M").time()
 end_time = datetime.datetime.strptime(end_time_str, "%H:%M").time()
 
-# Start a new monitor
 if st.button("Add Monitor"):
     task_id = str(uuid.uuid4())
     api_date = date_input.strftime("%Y-%m-%d")
@@ -113,7 +109,6 @@ if st.button("Add Monitor"):
     st.success(f"Monitoring started for {date_input.strftime('%m/%d/%Y')} {start_time_str}-{end_time_str}")
     send_email("✅ Monitoring Started", f"Monitoring started for {date_input.strftime('%m/%d/%Y')} between {start_time_str} and {end_time_str}.")
 
-# Display active monitors
 st.subheader("Active Monitors")
 to_delete = []
 for task_id, task in st.session_state['monitors'].items():
@@ -131,6 +126,5 @@ for task_id, task in st.session_state['monitors'].items():
                 send_email("🛑 Monitoring Stopped", f"Monitoring stopped for {task['date']} between {task['start']} and {task['end']}.")
                 to_delete.append(task_id)
 
-# Remove stopped monitors from view
 for task_id in to_delete:
     del st.session_state['monitors'][task_id]
